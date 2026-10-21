@@ -1,6 +1,8 @@
 # %%
 import pandas as pd
+import polars as pl
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 # %%
@@ -14,12 +16,14 @@ import matplotlib.pyplot as plt
 broken_df = pd.read_csv("../data/bikes.csv", encoding="ISO-8859-1")
 
 # TODO: please load the data with the Polars library (do not forget to import Polars at the top of the script) and call it pl_broken_df
+pl_broken_df = pl.read_csv("../data/bikes.csv", encoding="ISO-8859-1")
 
 # %%
 # Look at the first 3 rows
 broken_df[:3]
 
 # TODO: do the same with your polars data frame, pl_broken_df
+pl_broken_df.head(3)
 
 # %%
 # You'll notice that this is totally broken! `read_csv` has a bunch of options that will let us fix that, though. Here we'll
@@ -41,6 +45,13 @@ fixed_df = pd.read_csv(
 fixed_df[:3]
 
 # TODO: do the same (or similar) with polars
+# Polars has no index, so "Date" stays a normal column
+pl_fixed_df = pl.read_csv(
+    "../data/bikes.csv",
+    separator=";",
+    encoding="latin1",
+).with_columns(pl.col("Date").str.to_date("%d/%m/%Y"))
+pl_fixed_df.head(3)
 
 
 # %%
@@ -51,6 +62,10 @@ fixed_df[:3]
 fixed_df["Berri 1"]
 
 # TODO: how would you do this with a Polars data frame?
+# Idiomatic Polars: select() returns a DataFrame
+pl_fixed_df.select(pl.col("Berri 1"))
+# Square brackets return a Series, closest to the pandas output above
+pl_fixed_df["Berri 1"]
 
 
 # %%
@@ -58,7 +73,11 @@ fixed_df["Berri 1"]
 fixed_df["Berri 1"].plot()
 
 # TODO: how would you do this with a Polars data frame?
-
+# seaborn can't read a Polars DataFrame here (pandas 1.4.2 is too old),
+# and .to_pandas() needs pyarrow, which is not in environment.yml.
+# A dict of lists (a "Mapping") works, so we pass that instead.
+plt.figure()
+sns.lineplot(data=pl_fixed_df.to_dict(as_series=False), x="Date", y="Berri 1")
 
 # %%
 # We can also plot all the columns just as easily. We'll make it a little bigger, too.
@@ -67,3 +86,14 @@ fixed_df["Berri 1"].plot()
 fixed_df.plot(figsize=(15, 10))
 
 # TODO: how would you do this with a Polars data frame? With Polars data frames you might have to use the Seaborn library and it mmight not work out of the box as with pandas.
+# seaborn draws one line per group, so we reshape the table from wide to long:
+# one row per (Date, bike path) instead of one column per bike path.
+# The two "données non disponibles" columns are empty, so Polars read them as
+# strings; after unpivot, "cyclists" becomes a string column, so we cast it back.
+pl_long_df = pl_fixed_df.unpivot(
+    index="Date", variable_name="bike_path", value_name="cyclists"
+).with_columns(pl.col("cyclists").cast(pl.Int64))
+plt.figure(figsize=(15, 10))
+sns.lineplot(
+    data=pl_long_df.to_dict(as_series=False), x="Date", y="cyclists", hue="bike_path"
+)
